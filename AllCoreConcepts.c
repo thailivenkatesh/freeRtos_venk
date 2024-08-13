@@ -1,4 +1,3 @@
-/* Includes */
 #include "stm32l4xx_hal.h"
 #include "stm32l4xx.h"
 #include <stdio.h>
@@ -57,8 +56,7 @@ void vTimerCallback(TimerHandle_t xTimer);
 void EXTI15_10_IRQHandler(void);
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin);
 
-void button_init(void)
-{
+void button_init(void) {
 	GPIO_InitTypeDef GPIO_InitStruct;
 
 	/* GPIO Ports Clock Enable */
@@ -129,10 +127,10 @@ int main(void) {
 
 void vTask1(void *pvParameters) {
 	char dataTx[20] = {0};
-	int counter = 0;
+
 	while (1) {
 		// Prepare a string message
-		snprintf(dataTx, sizeof(dataTx), "MessageNormal %d", counter);
+		sprintf(dataTx,  "MessageNormal %d",sizeof(dataTx));
 		// Send data to queue
 		xQueueSend(xQueue, &dataTx, portMAX_DELAY);
 
@@ -154,7 +152,6 @@ void vTask1(void *pvParameters) {
 		// Notify task 2
 		xTaskNotifyGive(xTask2Handle);
 
-		//dataTx++;
 		vTaskDelay(pdMS_TO_TICKS(1000));
 	}
 }
@@ -183,14 +180,28 @@ void vTask2(void *pvParameters) {
 		// Receive from message buffer
 		xMessageBufferReceive(xMessageBuffer, &dataRx, sizeof(dataRx), portMAX_DELAY);
 
+		// Enter critical section
+		taskENTER_CRITICAL();
+		printf("Task 2: Entered Critical Section\n");
+
+		// Perform operations that should not be interrupted
+		// Critical section logic here
+
+		// Exit critical section
+		taskEXIT_CRITICAL();
+		printf("Task 2: Exited Critical Section\n");
+
 		// Lock mutex
-		xSemaphoreTake(xMutex, portMAX_DELAY);
+		if (xSemaphoreTake(xMutex, portMAX_DELAY) == pdTRUE) {
+			printf("Task 2: Mutex locked\n");
 
-		// Critical section
-		// Perform operations that need to be thread-safe
+			// Critical section - thread-safe operation
+			// Perform operations that need to be thread-safe
 
-		// Unlock mutex
-		xSemaphoreGive(xMutex);
+			// Unlock mutex
+			xSemaphoreGive(xMutex);
+			printf("Task 2: Mutex unlocked\n");
+		}
 
 		// Notify task 3
 		xTaskNotifyGive(xTask3Handle);
@@ -203,6 +214,17 @@ void vTask3(void *pvParameters) {
 	while (1) {
 		// Wait for task notification from task 2
 		ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+
+		// Enter critical section
+		taskENTER_CRITICAL();
+		printf("Task 3: Entered Critical Section\n");
+
+		// Perform operations that should not be interrupted
+		// Critical section logic here
+
+		// Exit critical section
+		taskEXIT_CRITICAL();
+		printf("Task 3: Exited Critical Section\n");
 
 		// Wait for an event from queue set
 		QueueSetMemberHandle_t xActivatedMember = xQueueSelectFromSet(xQueueSet, portMAX_DELAY);
@@ -282,17 +304,14 @@ void vTimerCallback(TimerHandle_t xTimer) {
 	xEventGroupSetBits(xEventGroup, BIT_2);
 }
 
-void EXTI15_10_IRQHandler(void)
-{
+void EXTI15_10_IRQHandler(void) {
 	HAL_GPIO_EXTI_IRQHandler(GPIO_PIN_13);
 }
 
-void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
-{
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
 	BaseType_t xHigherPriorityTaskWoken = pdFALSE;
 	char dataIntTx[20] = {0};
-	int counter = 0;
-	snprintf(dataIntTx, sizeof(dataIntTx), "MessageInterrupt %d", counter);
+	sprintf(dataIntTx, "fromInterrupt %d",sizeof(dataIntTx));
 
 	if (GPIO_Pin == GPIO_PIN_13) {
 		// ISR: Signal binary semaphore from ISR
@@ -305,7 +324,6 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 		xEventGroupSetBitsFromISR(xEventGroup, BIT_0, &xHigherPriorityTaskWoken);
 
 		// ISR: Send data to queue from ISR
-		//int data = 1;
 		xQueueSendFromISR(xQueue, &dataIntTx, &xHigherPriorityTaskWoken);
 
 		// ISR: Write to stream buffer from ISR
